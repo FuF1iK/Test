@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Панель управления переводами (с синхронизацией)</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            background: linear-gradient(145deg, #101418 0%, #1a1f2c 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        /* Окно авторизации */
+        .auth-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(6px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .auth-card {
+            background: #1e2436;
+            border-radius: 32px;
+            padding: 32px 28px;
+            width: 350px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .auth-card h2 {
+            color: white;
+            margin-bottom: 24px;
+            font-size: 26px;
+        }
+
+        .auth-card input {
+            width: 100%;
+            padding: 14px 16px;
+            background: #0f111a;
+            border: 1px solid #2d3348;
+            border-radius: 24px;
+            color: white;
+            margin-bottom: 18px;
+            outline: none;
+            font-size: 16px;
+        }
+
+        .auth-card input:focus {
+            border-color: #3b82f6;
+        }
+
+        .auth-card button {
+            background: #3b82f6;
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 40px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            transition: 0.2s;
+        }
+
+        .auth-card button:hover {
+            background: #2563eb;
+        }
+
+        .error-msg {
+            color: #f87171;
+            font-size: 13px;
+            margin-top: 12px;
+        }
+
+        /* Основной контейнер */
+        .app-container {
+            display: none;
+            max-width: 1300px;
+            margin: 0 auto;
+        }
+
+        .page {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .page.active-page {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .page-card {
+            background: #131824;
+            border-radius: 32px;
+            border: 1px solid #2a2f42;
+            padding: 24px;
+            box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.3);
+        }
+
+        .page-title {
+            font-size: 22px;
+            font-weight: 600;
+            color: #e2e8f0;
+            border-left: 4px solid #3b82f6;
+            padding-left: 16px;
+            margin-bottom: 20px;
+        }
+
+        /* Форма */
+        .inline-form {
+            background: #0b0e16;
+            border-radius: 28px;
+            padding: 20px;
+            margin-bottom: 28px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-end;
+            gap: 16px;
+            border: 1px solid #292f42;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            flex: 1 1 150px;
+        }
+
+        .form-group label {
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #8d99ae;
+        }
+
+        .form-group input {
+            background: #1a1f2c;
+            border: 1px solid #2d3448;
+            border-radius: 20px;
+            padding: 12px 14px;
+            color: white;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .form-group input:focus {
+            border-color: #3b82f6;
+        }
+
+        .amount-buttons {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+            flex-wrap: wrap;
+        }
+
+        .quick-btn {
+            background: #252b3d;
+            border: none;
+            color: #cbd5e6;
+            padding: 10px 18px;
+            border-radius: 40px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.1s;
+        }
+
+        .quick-btn:hover {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .submit-btn {
+            background: #10b981;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 40px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            font-size: 15px;
+        }
+
+        .clear-form-btn {
+            background: #6b7280;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 40px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            font-size: 15px;
+        }
+
+        .clear-table-btn {
+            background: #ef4444;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 40px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            font-size: 15px;
+            margin-right: 16px;
+        }
+
+        .clear-table-btn:hover {
+            background: #dc2626;
+        }
+
+        .bottom-nav-btn {
+            background: #3b82f6;
+            border: none;
+            padding: 14px 32px;
+            border-radius: 40px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 24px;
+            width: 100%;
+            transition: 0.2s;
+        }
+
+        .bottom-nav-btn:hover {
+            background: #2563eb;
+            transform: scale(0.98);
+        }
+
+        .back-btn {
+            background: #6b7280;
+            margin-top: 24px;
+        }
+
+        .back-btn:hover {
+            background: #4b5563;
+        }
+
+        /* Таблица */
+        .table-wrapper {
+            overflow-x: auto;
+            border-radius: 24px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 14px 12px;
+            border-bottom: 1px solid #252b3d;
+        }
+
+        th {
+            color: #9ca3af;
+            font-weight: 600;
+            background: #0c0f18;
+        }
+
+        td {
+            color: #e5e7eb;
+        }
+
+        /* Модальное окно для копирования */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(8px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal-content {
+            background: #131824;
+            border-radius: 32px;
+            border: 1px solid #3b82f6;
+            width: 90%;
+            max-width: 700px;
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            animation: modalSlideIn 0.3s ease;
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: scale(0.9) translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        .modal-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid #2a2f42;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h3 {
+            color: white;
+            font-size: 20px;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: #9ca3af;
+            font-size: 28px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .modal-close:hover {
+            color: #ef4444;
+        }
+
+        .modal-body {
+            padding: 24px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .code-block {
+            background: #0b0e16;
+            border-radius: 20px;
+            padding: 20px;
+            font-family: 'Courier New', 'Monaco', monospace;
+            font-size: 13px;
+            color: #e2e8f0;
+            white-space: pre-wrap;
+            word-break: break-all;
+            border: 1px solid #2d3448;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .copy-btn {
+            background: #10b981;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 40px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 20px;
+            width: 100%;
+            transition: 0.2s;
+        }
+
+        .copy-btn:hover {
+            background: #059669;
+        }
+
+        .copy-success {
+            background: #10b981;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 40px;
+            font-size: 12px;
+            text-align: center;
+            margin-top: 12px;
+            animation: fadeOut 2s ease;
+        }
+
+        @keyframes fadeOut {
+            0% { opacity: 1; }
+            70% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+
+        .user-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .header-buttons {
+            display: flex;
+            gap: 12px;
+        }
+
+        .logout-btn, .view-logs-btn, .sync-status {
+            border: none;
+            padding: 8px 20px;
+            border-radius: 30px;
+            color: white;
+            cursor: pointer;
+            transition: 0.2s;
+            font-size: 14px;
+        }
+
+        .logout-btn {
+            background: #334155;
+        }
+
+        .logout-btn:hover {
+            background: #475569;
+        }
+
+        .view-logs-btn {
+            background: #8b5cf6;
+        }
+
+        .view-logs-btn:hover {
+            background: #7c3aed;
+        }
+
+        .sync-status {
+            background: #10b981;
+            cursor: default;
+        }
+
+        .sync-status.offline {
+            background: #ef4444;
+        }
+
+        .info-text {
+            font-size: 12px;
+            margin-top: 12px;
+            color: #6b7280;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        /* Стили для логов */
+        .logs-container {
+            max-height: 600px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .log-entry {
+            background: #0b0e16;
+            border-radius: 16px;
+            padding: 16px;
+            border-left: 4px solid;
+            transition: 0.1s;
+        }
+
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .log-time {
+            color: #6c7293;
+            font-size: 12px;
+        }
+
+        .log-user {
+            background: #1f2937;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            color: #a5b4fc;
+        }
+
+        .log-action {
+            font-weight: bold;
+            color: #e2e8f0;
+            margin-bottom: 6px;
+        }
+
+        .log-details {
+            color: #9ca3af;
+            font-size: 13px;
+            word-break: break-word;
+        }
+
+        .clear-logs-btn {
+            background: #ef4444;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 40px;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 16px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px;
+            color: #6b7280;
+            font-size: 18px;
+        }
+
+        .sync-badge {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #10b981;
+            margin-right: 8px;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.4; transform: scale(0.8); }
+            100% { opacity: 1; transform: scale(1.2); }
+        }
+
+        @media (max-width: 780px) {
+            .inline-form {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .amount-buttons {
+                justify-content: space-between;
+            }
+            .code-block {
+                font-size: 11px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Модалка авторизации -->
+<div id="authModal" class="auth-overlay">
+    <div class="auth-card">
+        <h2>🔐 Вход в систему</h2>
+        <input type="text" id="loginInput" placeholder="Логин" autocomplete="off">
+        <input type="password" id="passwordInput" placeholder="Пароль">
+        <button id="loginBtn">Войти</button>
+        <div id="authError" class="error-msg"></div>
+    </div>
+</div>
+
+<!-- Основной интерфейс -->
+<div id="appMain" class="app-container">
+    <div class="user-header">
+        <div style="color: white; font-weight: 600;">
+            👋 Добро пожаловать, <span id="currentUserDisplay">——</span>
+            <span id="syncStatus" class="sync-status" style="margin-left: 12px; font-size: 12px;">🟢 Синхронизация</span>
+        </div>
+        <div class="header-buttons">
+            <button id="viewLogsBtn" class="view-logs-btn">📋 Посмотреть логи</button>
+            <button id="logoutBtn" class="logout-btn">🚪 Выйти</button>
+        </div>
+    </div>
+
+    <!-- СТРАНИЦА 1 - ТАБЛИЦА -->
+    <div id="page1" class="page active-page">
+        <div class="page-card">
+            <div class="page-title">📋 Управление переводами</div>
+            
+            <div class="inline-form">
+                <div class="form-group">
+                    <label>🧾 Ник / Имя</label>
+                    <input type="text" id="nickInput" placeholder="Например: Polina Paw" list="usersList">
+                    <datalist id="usersList"></datalist>
+                </div>
+                <div class="form-group">
+                    <label>🆔 Static ID</label>
+                    <input type="number" id="staticIdInput" placeholder="283360">
+                </div>
+                <div class="form-group">
+                    <label>💰 Сумма</label>
+                    <input type="number" id="amountInput" placeholder="Своя сумма" step="1">
+                </div>
+                <div class="amount-buttons">
+                    <button class="quick-btn" data-amount="10000">+10к</button>
+                    <button class="quick-btn" data-amount="15000">+15к</button>
+                    <button class="quick-btn" data-amount="82500">+82.5к</button>
+                </div>
+                <div style="display: flex; gap: 12px;">
+                    <button id="addBtn" class="submit-btn">➕ Добавить / Обновить</button>
+                    <button id="clearFormBtn" class="clear-form-btn">🗑️ Очистить форму</button>
+                </div>
+            </div>
+            
+            <div class="table-wrapper">
+                <table id="dataTable">
+                    <thead>
+                        <tr><th>Static ID</th><th>Сумма</th><th>Комментарий (Nick)</th></tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <tr><td colspan="3" style="text-align:center;">Загрузка данных...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="button-group">
+                <button id="clearTableBtn" class="clear-table-btn">🗑️ Очистить всю таблицу</button>
+            </div>
+            <div class="info-text">* При добавлении существующего ID сумма суммируется. Данные синхронизируются между всеми пользователями!</div>
+            
+            <button id="copyListBtn" class="bottom-nav-btn">📋 Скопировать список (staticld;amount;comment)</button>
+        </div>
+    </div>
+
+    <!-- СТРАНИЦА 2 - ЛОГИ ДЕЙСТВИЙ -->
+    <div id="page2" class="page">
+        <div class="page-card">
+            <div class="page-title">📜 Лог действий (локальный)</div>
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 16px;">
+                <button id="clearLogsBtn" class="clear-logs-btn">🗑️ Очистить логи</button>
+            </div>
+            <div id="logsContainer" class="logs-container">
+                <div class="empty-state">Загрузка...</div>
+            </div>
+            <button id="backFromLogsBtn" class="bottom-nav-btn back-btn">⬅️ Вернуться к таблице</button>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для копирования -->
+<div id="copyModal" class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>📋 Список для копирования (формат: staticld;amount;comment)</h3>
+            <button class="modal-close" id="closeModalBtn">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="copyTextBlock" class="code-block"></div>
+            <button id="doCopyBtn" class="copy-btn">📋 Копировать в буфер обмена</button>
+            <div id="copySuccessMsg" style="display: none;"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ==================== ВАШИ ДАННЫЕ FIREBASE ====================
+    const firebaseConfig = {
+        apiKey: "AIzaSyBm-7FgcmwyG0iaKXmIISnw7T0PJeJ07M",
+        authDomain: "paw-transfers.firebaseapp.com",
+        databaseURL: "https://paw-transfers-default-rtdb.firebaseio.com",
+        projectId: "paw-transfers",
+        storageBucket: "paw-transfers.firebasestorage.app",
+        messagingSenderId: "444255771838",
+        appId: "1:444255771838:web:f3fe2b4d577f40c24552ef"
+    };
+    
+    // Инициализация Firebase
+    let database = null;
+    let isFirebaseReady = false;
+    
+    try {
+        firebase.initializeApp(firebaseConfig);
+        database = firebase.database();
+        isFirebaseReady = true;
+        console.log("✅ Firebase подключен");
+    } catch(e) {
+        console.warn("⚠️ Ошибка Firebase:", e.message);
+    }
+    
+    // ==================== ШИФРОВАНИЕ ДАННЫХ ====================
+    function simpleHash(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash;
+        }
+        return hash.toString(16);
+    }
+
+    // Три аккаунта администраторов
+    const encryptedUsers = [
+        { loginHash: simpleHash("Tema Paw"), passwordHash: simpleHash("TemaFuFlya"), displayName: "Tema Paw", role: "admin" },
+        { loginHash: simpleHash("Polina Paw"), passwordHash: simpleHash("Polina283360Paw"), displayName: "Polina Paw", role: "admin" },
+        { loginHash: simpleHash("Andre Paw"), passwordHash: simpleHash("Vipipupka289781"), displayName: "Andre Paw", role: "admin" }
+    ];
+
+    // Исходные данные
+    const originalData = [
+        { staticld: 283360, amount: 712160, comment: "Polina Paw" },
+        { staticld: 284628, amount: 75000, comment: "Oleh Soloviov" },
+        { staticld: 333876, amount: 280000, comment: "Troy Paw" },
+        { staticld: 315244, amount: 45000, comment: "Yan Paw" },
+        { staticld: 289781, amount: 210700, comment: "Andre Paw" },
+        { staticld: 117942, amount: 246100, comment: "Steve Sunrise" },
+        { staticld: 309566, amount: 30000, comment: "llyukha Paw" },
+        { staticld: 333153, amount: 97500, comment: "Leon Paw" },
+        { staticld: 149404, amount: 15000, comment: "Nezer Paw" },
+        { staticld: 298800, amount: 30000, comment: "Kotik Paw (узел)" }
+    ];
+
+    let tableData = [];
+    let actionLogs = [];
+    let currentUser = null;
+    let currentUserRole = null;
+
+    // DOM элементы
+    const authModal = document.getElementById('authModal');
+    const appMain = document.getElementById('appMain');
+    const loginBtn = document.getElementById('loginBtn');
+    const loginInput = document.getElementById('loginInput');
+    const passwordInput = document.getElementById('passwordInput');
+    const authError = document.getElementById('authError');
+    const currentUserSpan = document.getElementById('currentUserDisplay');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const viewLogsBtn = document.getElementById('viewLogsBtn');
+    const copyModal = document.getElementById('copyModal');
+    const copyTextBlock = document.getElementById('copyTextBlock');
+    const closeModalBtn = document.getElementById('closeModalBtn');
+    const doCopyBtn = document.getElementById('doCopyBtn');
+    const copySuccessMsg = document.getElementById('copySuccessMsg');
+    const syncStatusSpan = document.getElementById('syncStatus');
+    const usersDatalist = document.getElementById('usersList');
+
+    function updateUsersDatalist() {
+        if (!usersDatalist) return;
+        const uniqueComments = [...new Set(tableData.map(item => item.comment))];
+        usersDatalist.innerHTML = '';
+        uniqueComments.forEach(comment => {
+            const option = document.createElement('option');
+            option.value = comment;
+            usersDatalist.appendChild(option);
+        });
+    }
+
+    // Загрузка данных из Firebase
+    async function loadDataFromCloud() {
+        if (isFirebaseReady && database) {
+            try {
+                syncStatusSpan.innerHTML = '<span class="sync-badge"></span> Синхронизация...';
+                const snapshot = await database.ref('tableData').once('value');
+                const cloudData = snapshot.val();
+                if (cloudData && Array.isArray(cloudData) && cloudData.length > 0) {
+                    tableData = cloudData;
+                } else {
+                    tableData = JSON.parse(JSON.stringify(originalData));
+                    await database.ref('tableData').set(tableData);
+                }
+                syncStatusSpan.innerHTML = '🟢 Синхронизация';
+                return;
+            } catch(e) {
+                console.warn("Ошибка загрузки из Firebase:", e);
+            }
+        }
+        // Fallback
+        const saved = localStorage.getItem('table_data');
+        if (saved) {
+            try {
+                tableData = JSON.parse(saved);
+            } catch(e) {
+                tableData = JSON.parse(JSON.stringify(originalData));
+            }
+        } else {
+            tableData = JSON.parse(JSON.stringify(originalData));
+        }
+        syncStatusSpan.innerHTML = '🟡 Локальный режим';
+    }
+
+    async function saveDataToCloud() {
+        if (isFirebaseReady && database) {
+            try {
+                await database.ref('tableData').set(tableData);
+                syncStatusSpan.innerHTML = '🟢 Синхронизация';
+            } catch(e) {
+                console.warn("Ошибка сохранения в Firebase:", e);
+                syncStatusSpan.innerHTML = '🔴 Ошибка синхр.';
+            }
+        } else {
+            localStorage.setItem('table_data', JSON.stringify(tableData));
+            syncStatusSpan.innerHTML = '🟡 Локальный режим';
+        }
+    }
+
+    function subscribeToRealtimeUpdates() {
+        if (isFirebaseReady && database) {
+            database.ref('tableData').on('value', (snapshot) => {
+                const newData = snapshot.val();
+                if (newData && Array.isArray(newData)) {
+                    const newStr = JSON.stringify(newData);
+                    const oldStr = JSON.stringify(tableData);
+                    if (newStr !== oldStr) {
+                        tableData = newData;
+                        renderTable();
+                        updateUsersDatalist();
+                        addLogInternal("СИСТЕМА", "🔄 Синхронизация", "Данные обновлены с сервера");
+                    }
+                }
+            });
+        }
+    }
+
+    function loadLogs() {
+        const saved = localStorage.getItem('action_logs');
+        if (saved) {
+            try {
+                actionLogs = JSON.parse(saved);
+            } catch(e) {
+                actionLogs = [];
+            }
+        } else {
+            actionLogs = [];
+            addLogInternal("SYSTEM", "Инициализация", "Загружены начальные данные");
+        }
+    }
+
+    function saveLogs() {
+        localStorage.setItem('action_logs', JSON.stringify(actionLogs));
+    }
+
+    function addLogInternal(user, action, details) {
+        const now = new Date();
+        const timestamp = now.toLocaleString('ru-RU', { hour12: false });
+        actionLogs.unshift({ timestamp, user, action, details });
+        if (actionLogs.length > 500) actionLogs.pop();
+        saveLogs();
+    }
+
+    function addLog(action, details) {
+        const username = currentUser || "Гость";
+        addLogInternal(username, action, details);
+    }
+
+    function renderTable() {
+        const tbody = document.getElementById('tableBody');
+        if (!tbody) return;
+        const sorted = [...tableData].sort((a, b) => a.staticld - b.staticld);
+        if (sorted.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">Таблица пуста</td></tr>';
+            return;
+        }
+        let html = '';
+        for (let item of sorted) {
+            html += `<tr>
+                        <td style="font-weight:500;">${item.staticld}</td>
+                        <td>${item.amount.toLocaleString()} ₽</td>
+                        <td>${escapeHtml(item.comment)}</td>
+                      </tr>`;
+        }
+        tbody.innerHTML = html;
+        updateUsersDatalist();
+    }
+
+    function renderLogs() {
+        const container = document.getElementById('logsContainer');
+        if (!container) return;
+        if (actionLogs.length === 0) {
+            container.innerHTML = '<div class="empty-state">📭 Логов пока нет</div>';
+            return;
+        }
+        let logsHtml = '';
+        for (let log of actionLogs) {
+            let borderColor = '#3b82f6';
+            if (log.action.includes('Очистка')) borderColor = '#ef4444';
+            else if (log.action.includes('Авторизация')) borderColor = '#10b981';
+            else if (log.action.includes('Добавление')) borderColor = '#eab308';
+            else if (log.action.includes('Синхронизация')) borderColor = '#8b5cf6';
+            logsHtml += `<div class="log-entry" style="border-left-color: ${borderColor};">
+                            <div class="log-header">
+                                <span class="log-time">🕒 ${log.timestamp}</span>
+                                <span class="log-user">👤 ${escapeHtml(log.user)}</span>
+                            </div>
+                            <div class="log-action">📌 ${escapeHtml(log.action)}</div>
+                            <div class="log-details">${escapeHtml(log.details)}</div>
+                         </div>`;
+        }
+        container.innerHTML = logsHtml;
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
+    function generateCopyText() {
+        let result = '';
+        for (let item of tableData) {
+            result += `${item.staticld};${item.amount};${item.comment}\n`;
+        }
+        return result.trim();
+    }
+
+    function openCopyModal() {
+        const copyText = generateCopyText();
+        copyTextBlock.innerText = copyText || 'Нет данных';
+        copyModal.classList.add('active');
+    }
+
+    function closeModal() {
+        copyModal.classList.remove('active');
+        copySuccessMsg.style.display = 'none';
+    }
+
+    async function copyToClipboard() {
+        const text = copyTextBlock.innerText;
+        try {
+            await navigator.clipboard.writeText(text);
+            copySuccessMsg.style.display = 'block';
+            copySuccessMsg.className = 'copy-success';
+            copySuccessMsg.innerText = '✅ Скопировано!';
+            addLog("📋 Копирование списка", `Скопировано ${tableData.length} записей`);
+            setTimeout(() => copySuccessMsg.style.display = 'none', 2000);
+        } catch (err) {
+            alert('Ошибка копирования');
+        }
+    }
+
+    async function addToTable() {
+        const nick = document.getElementById('nickInput').value.trim();
+        const staticId = parseInt(document.getElementById('staticIdInput').value);
+        let amount = parseFloat(document.getElementById('amountInput').value);
+        if (!nick) { alert("Введите ник"); return; }
+        if (isNaN(staticId) || staticId <= 0) { alert("Введите корректный Static ID"); return; }
+        if (isNaN(amount) || amount <= 0) { alert("Введите сумму больше нуля"); return; }
+
+        const existing = tableData.find(item => item.staticld === staticId);
+        let oldAmount = existing ? existing.amount : 0;
+        
+        if (existing) {
+            existing.amount += amount;
+            existing.comment = nick;
+            addLog("➕ Обновление перевода", `ID ${staticId}, +${amount.toLocaleString()} ₽. Было: ${oldAmount.toLocaleString()}₽ → Стало: ${existing.amount.toLocaleString()}₽`);
+        } else {
+            tableData.push({ staticld: staticId, amount, comment: nick });
+            addLog("➕ Добавление", `ID ${staticId}, ник "${nick}", сумма ${amount.toLocaleString()} ₽`);
+        }
+
+        await saveDataToCloud();
+        renderTable();
+        
+        document.getElementById('nickInput').value = '';
+        document.getElementById('staticIdInput').value = '';
+        document.getElementById('amountInput').value = '';
+        alert(`✅ Готово! ID ${staticId}, +${amount.toLocaleString()} ₽`);
+    }
+
+    async function clearTable() {
+        if (confirm("⚠️ Очистить ВСЮ таблицу? Данные будут удалены у всех пользователей!")) {
+            const count = tableData.length;
+            tableData = [];
+            await saveDataToCloud();
+            renderTable();
+            addLog("🗑️ Очистка таблицы", `Удалено ${count} записей`);
+            alert('🗑️ Таблица очищена');
+        }
+    }
+
+    function clearForm() {
+        document.getElementById('nickInput').value = '';
+        document.getElementById('staticIdInput').value = '';
+        document.getElementById('amountInput').value = '';
+        addLog("🧹 Очистка формы", "Очищены поля ввода");
+        alert('🧹 Форма очищена');
+    }
+
+    function clearLogs() {
+        if (confirm("Очистить историю действий?")) {
+            actionLogs = [];
+            saveLogs();
+            renderLogs();
+            alert('🗑️ Логи очищены');
+        }
+    }
+
+    function switchToPage(pageId) {
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active-page'));
+        document.getElementById(pageId).classList.add('active-page');
+        if (pageId === 'page2') renderLogs();
+    }
+
+    function authenticateUser(login, password) {
+        const loginHash = simpleHash(login);
+        const passwordHash = simpleHash(password);
+        const user = encryptedUsers.find(u => u.loginHash === loginHash && u.passwordHash === passwordHash);
+        return user ? { success: true, displayName: user.displayName, role: user.role } : { success: false };
+    }
+
+    async function attemptLogin() {
+        const login = loginInput.value.trim();
+        const password = passwordInput.value.trim();
+        const authResult = authenticateUser(login, password);
+        if (authResult.success) {
+            currentUser = authResult.displayName;
+            currentUserRole = authResult.role;
+            currentUserSpan.innerText = `${currentUser} (${currentUserRole})`;
+            authModal.style.display = "none";
+            appMain.style.display = "block";
+            await loadDataFromCloud();
+            subscribeToRealtimeUpdates();
+            loadLogs();
+            renderTable();
+            addLogInternal(currentUser, "🔓 Авторизация", `Успешный вход. Роль: ${currentUserRole}`);
+        } else {
+            authError.innerText = "❌ Неверный логин или пароль";
+            addLogInternal("Unknown", "❌ Неудачная попытка входа", `Логин: ${login}`);
+        }
+    }
+
+    function logout() {
+        if (currentUser) addLogInternal(currentUser, "🚪 Выход", "Выход из системы");
+        currentUser = null;
+        authModal.style.display = "flex";
+        appMain.style.display = "none";
+        loginInput.value = "";
+        passwordInput.value = "";
+        authError.innerText = "";
+    }
+
+    // Инициализация
+    function init() {
+        document.getElementById('addBtn').addEventListener('click', addToTable);
+        document.getElementById('clearFormBtn').addEventListener('click', clearForm);
+        document.getElementById('clearTableBtn').addEventListener('click', clearTable);
+        document.getElementById('copyListBtn').addEventListener('click', openCopyModal);
+        document.getElementById('backFromLogsBtn').addEventListener('click', () => switchToPage('page1'));
+        document.getElementById('viewLogsBtn').addEventListener('click', () => switchToPage('page2'));
+        document.getElementById('clearLogsBtn').addEventListener('click', clearLogs);
+        closeModalBtn.addEventListener('click', closeModal);
+        doCopyBtn.addEventListener('click', copyToClipboard);
+        copyModal.addEventListener('click', (e) => { if (e.target === copyModal) closeModal(); });
+        document.querySelectorAll('.quick-btn').forEach(btn => {
+            btn.addEventListener('click', () => document.getElementById('amountInput').value = parseInt(btn.dataset.amount));
+        });
+        loginBtn.addEventListener('click', attemptLogin);
+        logoutBtn.addEventListener('click', logout);
+        document.addEventListener('keypress', (e) => { if (authModal.style.display !== 'none' && e.key === 'Enter') attemptLogin(); });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && copyModal.classList.contains('active')) closeModal(); });
+    }
+    init();
+</script>
+</body>
+</html>
